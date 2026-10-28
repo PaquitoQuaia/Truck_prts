@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -6,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catálogo | Truck Parts</title>
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/catalogo.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/catalogo.css') }}">
 </head>
 
 <body>
@@ -90,18 +88,15 @@
         {% set codigo = p.descricao_prod.split()[-1] %}
         {% set tipo = p.descricao_prod.rsplit(' ', 1)[0] %}
 
-        <article class="card" data-categoria="{{ p.categoria }}">
+        <!-- O card inteiro abre o produto -->
+        <article class="card" data-categoria="{{ p.categoria }}" onclick="abrirProduto('{{ url_for('detalhes_produto', product_id=p.id_produto) }}')">
             <div>
-                <a href="{{ url_for('detalhes_produto', product_id=p.id_produto) }}"
-                   class="link-produto">
-
-                    <div class="imagem">
-                        <img
-                            src="{{ p.imagem if p.imagem.startswith('http') else url_for('static', filename=p.imagem) }}"
-                            alt="{{ tipo }}"
-                        >
-                    </div>
-                </a>
+                <div class="imagem">
+                    <img
+                        src="{{ p.imagem if p.imagem.startswith('http') else url_for('static', filename=p.imagem) }}"
+                        alt="{{ tipo }}"
+                    >
+                </div>
 
                 <span class="categoria">{{ p.categoria }}</span>
                 <h2>{{ codigo }}</h2>
@@ -117,12 +112,14 @@
                 <div class="estoque">Estoque: {{ p.estoque }}</div>
             </div>
 
-            <a
-                class="add link-detalhes"
-                href="{{ url_for('detalhes_produto', product_id=p.id_produto) }}"
+            <!-- Botão exclusivo para adicionar ao carrinho -->
+            <button
+                type="button"
+                class="btn-add-carrinho"
+                onclick="adicionarAoCarrinho('{{ p.id_produto }}', event)"
             >
-                Ver detalhes do produto
-            </a>
+                Adicionar ao Carrinho
+            </button>
         </article>
     {% endfor %}
 </div>
@@ -133,14 +130,13 @@
     </button>
 </div>
 
-<script src="{{ url_for('static', filename='JS/carrinho.js') }}"></script>
-
 {% else %}
 <div class="vazio">
-    <h2>Nenhum produto encontrado</h2>
+    ## Nenhum produto encontrado
     <p>Tente pesquisar outro código ou selecionar outra categoria.</p>
 </div>
 {% endif %}
 
+<script src="{{ url_for('static', filename='JS/carrinho.js') }}"></script>
 </body>
 </html>
