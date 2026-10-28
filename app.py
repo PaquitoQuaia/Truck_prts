@@ -626,6 +626,17 @@ def atualizar_totais_carrinho(cursor, id_carrinho):
     )
 
 
+def ajustar_estoque_produto(cursor, product_id, delta):
+    cursor.execute(
+        """
+        UPDATE PRODUTO
+        SET estoque = GREATEST(estoque + %s, 0)
+        WHERE id_produto = %s
+        """,
+        (delta, product_id)
+    )
+
+
 # =========================================================
 # ADICIONAR AO CARRINHO
 # =========================================================
@@ -689,6 +700,12 @@ def add_to_cart(product_id):
             if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
                 return jsonify({"success": False, "message": "Produto sem estoque no momento."}), 400
             return redirect(url_for("carrinho", erro="Produto sem estoque no momento."))
+
+        if quantidade > produto["estoque"]:
+            mensagem = "Quantidade indisponível no estoque atual."
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "message": mensagem}), 400
+            return redirect(url_for("carrinho", erro=mensagem))
 
         id_carrinho = obter_carrinho_aberto(
             cursor,
@@ -760,6 +777,7 @@ def add_to_cart(product_id):
                 )
             )
 
+        ajustar_estoque_produto(cursor, product_id, -quantidade)
         atualizar_totais_carrinho(cursor, id_carrinho)
 
         conexao.commit()
@@ -952,6 +970,17 @@ def finalizar_compra():
             if id_carrinho is not None:
                 cursor.execute(
                     """
+                    UPDATE PRODUTO p
+                    INNER JOIN ITEM_CARRINHO i
+                        ON i.id_produto = p.id_produto
+                    SET p.estoque = p.estoque + i.quantidade
+                    WHERE i.id_carrinho = %s
+                    """,
+                    (id_carrinho,)
+                )
+
+                cursor.execute(
+                    """
                     UPDATE CARRINHO
                     SET s_carrinho = 'finalizado'
                     WHERE id_carrinho = %s
@@ -1111,6 +1140,7 @@ def aumentar_quantidade(product_id):
             (item["preco_prod"], id_carrinho, product_id)
         )
 
+        ajustar_estoque_produto(cursor, product_id, -1)
         atualizar_totais_carrinho(cursor, id_carrinho)
 
         conexao.commit()
@@ -1182,6 +1212,7 @@ def diminuir_quantidade(product_id):
                         """,
                         (id_carrinho, product_id)
                     )
+                    ajustar_estoque_produto(cursor, product_id, 1)
 
                 else:
 
@@ -1193,6 +1224,7 @@ def diminuir_quantidade(product_id):
                         """,
                         (id_carrinho, product_id)
                     )
+                    ajustar_estoque_produto(cursor, product_id, 1)
 
                 atualizar_totais_carrinho(cursor, id_carrinho)
 
@@ -1239,6 +1271,20 @@ def remove_from_cart(product_id):
         )
 
         if id_carrinho is not None:
+
+            cursor.execute(
+                """
+                SELECT quantidade
+                FROM ITEM_CARRINHO
+                WHERE id_carrinho = %s
+                AND id_produto = %s
+                """,
+                (id_carrinho, product_id)
+            )
+            item = cursor.fetchone()
+
+            if item is not None:
+                ajustar_estoque_produto(cursor, product_id, item["quantidade"])
 
             cursor.execute(
                 """
