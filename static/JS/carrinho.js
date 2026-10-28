@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const popup = document.createElement('div');
-
     popup.id = 'cart-popup';
 
     Object.assign(popup.style, {
@@ -62,24 +61,16 @@ document.addEventListener('DOMContentLoaded', function () {
         transform: 'translateY(10px)',
         transition: 'all 0.25s ease',
         pointerEvents: 'none',
-
-        /* deixa o texto e botão lado a lado */
         display: 'flex',
         alignItems: 'center',
         gap: '15px'
     });
 
-    // Texto da mensagem
     const message = document.createElement('span');
-
     message.textContent = 'Produto adicionado ao carrinho!';
 
-
-    // Botão "Ver carrinho"
     const cartButton = document.createElement('a');
-
     cartButton.href = '/carrinho';
-
     cartButton.textContent = 'Ver carrinho';
 
     Object.assign(cartButton.style, {
@@ -93,122 +84,136 @@ document.addEventListener('DOMContentLoaded', function () {
         whiteSpace: 'nowrap'
     });
 
-
-    // Adiciona os dois dentro do popup
     popup.appendChild(message);
     popup.appendChild(cartButton);
-
     document.body.appendChild(popup);
 
-
     function showPopup(text) {
-
         message.textContent = text;
-
         popup.style.opacity = '1';
-
         popup.style.transform = 'translateY(0)';
-
         popup.style.pointerEvents = 'auto';
 
         clearTimeout(showPopup.timeoutId);
-
         showPopup.timeoutId = setTimeout(() => {
-
             popup.style.opacity = '0';
-
             popup.style.transform = 'translateY(10px)';
-
             popup.style.pointerEvents = 'none';
-
-        }, 2200);
+        }, 2500);
     }
 
+    window.showPopup = showPopup;
 
-    document
-        .querySelectorAll('form[action*="/add_to_cart/"]')
-        .forEach((form) => {
-
-            form.addEventListener('submit', async function (event) {
-
+    const grid = document.getElementById('grid');
+    if (grid) {
+        grid.addEventListener('click', (event) => {
+            const btnCarrinho = event.target.closest('.btn-add-carrinho');
+            
+            if (btnCarrinho) {
+                event.stopPropagation();
                 event.preventDefault();
+                const idProduto = btnCarrinho.getAttribute('data-id');
+                adicionarAoCarrinho(idProduto, btnCarrinho);
+                return;
+            }
 
-                const button = form.querySelector(
-                    'button[type="submit"]'
-                );
-
-
-                if (button) {
-
-                    button.disabled = true;
-
-                    const originalText = button.textContent;
-
-                    button.textContent = 'Adicionando...';
-
-
-                    try {
-
-                        const response = await fetch(
-                            form.action,
-                            {
-                                method: 'POST',
-
-                                headers: {
-                                    'X-Requested-With':
-                                        'XMLHttpRequest'
-                                }
-                            }
-                        );
-
-                        const finalUrl = new URL(response.url);
-                        const erro = finalUrl.searchParams.get('erro');
-
-                        if (erro) {
-                            showPopup(erro);
-                            return;
-                        }
-
-                        const contentType = response.headers.get('content-type') || '';
-
-                        if (contentType.includes('application/json')) {
-                            const data = await response.json();
-
-                            if (response.ok && data.success !== false) {
-                                showPopup(
-                                    data.message ||
-                                    'Produto adicionado ao carrinho!'
-                                );
-                            } else {
-                                showPopup(
-                                    data.message ||
-                                    'Não foi possível adicionar ao carrinho.'
-                                );
-                            }
-                            return;
-                        }
-
-                        if (response.ok || response.redirected) {
-                            showPopup('Produto adicionado ao carrinho!');
-                            return;
-                        }
-
-                        showPopup('Não foi possível adicionar ao carrinho.');
-
-                    } catch (error) {
-
-                        showPopup(
-                            'Erro ao adicionar ao carrinho.'
-                        );
-
-
-                    } finally {
-
-                        button.disabled = false;
-
-                        button.textContent = originalText;
-                    }
+            const card = event.target.closest('.card');
+            if (card) {
+                const url = card.getAttribute('data-url');
+                if (url) {
+                    window.location.href = url;
                 }
-            });
+            }
         });
+    }
+
+    document.querySelectorAll('form[action*="/add_to_cart/"]').forEach((form) => {
+        form.addEventListener('submit', async function (event) {
+            event.preventDefault();
+
+            const button = form.querySelector('button[type="submit"]');
+            if (button) {
+                button.disabled = true;
+                const originalText = button.textContent;
+                button.textContent = 'Adicionando...';
+
+                try {
+                    const formData = new FormData(form);
+
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: formData
+                    });
+
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (response.ok && data.success !== false) {
+                            showPopup(data.message || 'Produto adicionado ao carrinho!');
+                        } else {
+                            showPopup(data.message || 'Não foi possível adicionar ao carrinho.');
+                        }
+                    } else if (response.ok || response.redirected) {
+                        showPopup('Produto adicionado ao carrinho!');
+                    } else {
+                        showPopup('Não foi possível adicionar ao carrinho.');
+                    }
+                } catch (error) {
+                    showPopup('Erro ao adicionar ao carrinho.');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            }
+        });
+    });
 });
+
+async function adicionarAoCarrinho(idProduto, buttonElement) {
+    if (!idProduto) return;
+
+    let textoOriginal = '';
+    if (buttonElement) {
+        buttonElement.disabled = true;
+        textoOriginal = buttonElement.textContent;
+        buttonElement.textContent = 'Adicionando...';
+    }
+
+    try {
+        const response = await fetch(`/add_to_cart/${idProduto}`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ quantidade: 1 })
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            if (response.ok && data.success !== false) {
+                window.showPopup(data.message || 'Produto adicionado ao carrinho!');
+            } else {
+                window.showPopup(data.message || 'Estoque insuficiente ou erro no pedido.');
+            }
+        } else if (response.ok || response.redirected) {
+            window.showPopup('Produto adicionado ao carrinho!');
+        } else {
+            window.showPopup('Erro ao adicionar ao carrinho.');
+        }
+
+    } catch (error) {
+        console.error('Erro:', error);
+        window.showPopup('Erro de conexão com o servidor.');
+    } finally {
+        if (buttonElement) {
+            buttonElement.disabled = false;
+            buttonElement.textContent = textoOriginal;
+        }
+    }
+}

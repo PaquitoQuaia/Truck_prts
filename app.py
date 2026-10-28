@@ -4,7 +4,8 @@ from flask import (
     request,
     session,
     redirect,
-    url_for
+    url_for,
+    jsonify
 )
 
 import mysql.connector
@@ -633,9 +634,32 @@ def atualizar_totais_carrinho(cursor, id_carrinho):
 def add_to_cart(product_id):
 
     if "usuario_id" not in session:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "message": "Você precisa estar logado."}), 401
         return redirect(url_for("login"))
 
     id_usuario = int(session["usuario_id"])
+
+    quantidade = 1
+    if request.is_json:
+        dados = request.get_json(silent=True) or {}
+        quantidade = dados.get("quantidade", 1)
+    elif request.form.get("quantidade") is not None:
+        quantidade = request.form.get("quantidade", 1)
+    elif request.args.get("quantidade") is not None:
+        quantidade = request.args.get("quantidade", 1)
+
+    try:
+        quantidade = int(quantidade)
+    except (TypeError, ValueError):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "message": "Quantidade inválida."}), 400
+        return redirect(url_for("carrinho", erro="Quantidade inválida."))
+
+    if quantidade < 1:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "message": "Quantidade mínima é 1."}), 400
+        return redirect(url_for("carrinho", erro="Quantidade mínima é 1."))
 
     conexao = None
     cursor = None
@@ -657,9 +681,13 @@ def add_to_cart(product_id):
         produto = cursor.fetchone()
 
         if produto is None:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "message": "Produto não encontrado."}), 404
             return redirect(url_for("carrinho", erro="Produto não encontrado."))
 
         if produto["estoque"] <= 0:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "message": "Produto sem estoque no momento."}), 400
             return redirect(url_for("carrinho", erro="Produto sem estoque no momento."))
 
         id_carrinho = obter_carrinho_aberto(
@@ -670,6 +698,8 @@ def add_to_cart(product_id):
 
         if not id_carrinho:
             session.clear()
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "message": "Sessão inválida."}), 401
             return redirect(url_for("login"))
 
         cursor.execute(
@@ -683,14 +713,16 @@ def add_to_cart(product_id):
         )
 
         item = cursor.fetchone()
+        quantidade_atual = item["quantidade"] if item else 0
+        quantidade_total = quantidade_atual + quantidade
+
+        if quantidade_total > produto["estoque"]:
+            mensagem = "Você atingiu o limite disponível em estoque."
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "message": mensagem}), 400
+            return redirect(url_for("carrinho", erro=mensagem))
 
         if item:
-
-            nova_quantidade = item["quantidade"] + 1
-
-            if nova_quantidade > produto["estoque"]:
-                return redirect(url_for("carrinho", erro="Você atingiu o limite disponível em estoque."))
-
             cursor.execute(
                 """
                 UPDATE ITEM_CARRINHO
@@ -701,7 +733,7 @@ def add_to_cart(product_id):
                 AND id_produto = %s
                 """,
                 (
-                    nova_quantidade,
+                    quantidade_total,
                     produto["preco_prod"],
                     id_carrinho,
                     product_id
@@ -709,7 +741,6 @@ def add_to_cart(product_id):
             )
 
         else:
-
             cursor.execute(
                 """
                 INSERT INTO ITEM_CARRINHO
@@ -719,11 +750,12 @@ def add_to_cart(product_id):
                     quantidade,
                     preco_unitario
                 )
-                VALUES (%s, %s, 1, %s)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (
                     id_carrinho,
                     product_id,
+                    quantidade,
                     produto["preco_prod"]
                 )
             )
@@ -737,11 +769,16 @@ def add_to_cart(product_id):
         if conexao:
             conexao.rollback()
 
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "message": "Não foi possível adicionar o produto ao carrinho."}), 500
         return "Não foi possível adicionar o produto ao carrinho. Tente novamente."
 
     finally:
 
         fechar_banco(conexao, cursor)
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"success": True, "message": "Produto adicionado ao carrinho!"})
 
     return redirect(url_for("carrinho"))
 
